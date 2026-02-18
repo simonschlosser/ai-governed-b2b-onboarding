@@ -162,7 +162,7 @@
       "name": "07 AI → Resolve Identity",
       "credentials": {
         "openAiApi": {
-          "id": "3HBcRu4uU5H3gYao",
+          "id": "",
           "name": "OpenAi account"
         }
       }
@@ -570,7 +570,7 @@
       "name": "14 AI → Review Card (AML)",
       "credentials": {
         "openAiApi": {
-          "id": "3HBcRu4uU5H3gYao",
+          "id": "",
           "name": "OpenAi account"
         }
       }
