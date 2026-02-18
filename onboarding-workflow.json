@@ -1,0 +1,814 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bp-onboarding",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f079e610-dcb6-42b6-bfaf-b77d5b3ce46b",
+      "name": "01 Webhook → BP Onboarding",
+      "webhookId": "31847f68-09a9-49a1-b169-e8541e496e9a"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ JSON.stringify({\n  decision: \"REQUEST_INFO\",\n  reason: \"Identity confidence too low based on name+country only\",\n  recommendation: \"Provide address and/or identifiers (VAT, registration number).\",\n  topCandidates: $json.topCandidates ?? []\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        560,
+        192
+      ],
+      "id": "9fa105ca-854a-4314-a37a-12a347d506f2",
+      "name": "07 Respond → REQUEST_INFO (Low Identity)"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.identityBand}}",
+                    "rightValue": "LOW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cdb82fe3-ebbe-43c0-be4a-32a89c3a1619"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "760ba5c9-4c56-4f0c-b0de-a0dd69ad90fd",
+                    "leftValue": "={{$json.identityBand}}",
+                    "rightValue": "MIDDLE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0e883fe9-0129-41cc-9412-0d8fb27ffb6b",
+                    "leftValue": "={{$json.identityBand}}",
+                    "rightValue": "HIGH",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        208
+      ],
+      "id": "11dc0759-1d4b-48ee-b113-e08fcc24195f",
+      "name": "06 Policy → Route by Identity Band"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You assist in business partner identity resolution for onboarding.\n\nImportant rules:\n1) Multiple top candidates may represent the same legal entity from different authoritative data sources. Do NOT treat identical name/country (and close city/postcode) across sources as ambiguity.\n2) Different identifier TYPES across sources are normal (e.g., VAT vs register number vs LEI). This must NOT reduce confidence.\n3) Only treat identifiers as conflicting if the SAME identifier type appears with DIFFERENT values (see identityPolicy.crossCandidateIdentifierConflicts).\n4) If identityPolicy.crossCandidateIdentifierConflicts.conflictCount > 0, that is strong evidence candidates may be different entities.\n5) Recommend exactly one candidate if evidence supports it. Otherwise return selectedCdqId = \"INSUFFICIENT_CONFIDENCE\".\n\nDecision guidance:\n- If identityCase is MULTI_SOURCE_SAME_ENTITY: select the top-scoring candidate and set note = \"MULTI_SOURCE_OK\" with confidence HIGH or MEDIUM.\n- If identityCase is AMBIGUOUS and there are same-type identifier conflicts: be conservative (likely LOW) unless one candidate clearly dominates on score AND location match.\n- Never invent facts. Use ONLY the provided data.\n\nReturn JSON only with exactly this schema:\n{\"selectedCdqId\":\"...\",\"confidence\":\"HIGH|MEDIUM|LOW\",\"reason\":\"...\",\"note\":\"MULTI_SOURCE_OK|AMBIGUOUS\"}\n"
+            },
+            {
+              "content": "={{ JSON.stringify({\n  input: {\n    name: $json.bp[\"bp.name\"],\n    country: $json.bp[\"bp.country\"],\n    city: $json.bp[\"bp.city\"],\n    postCode: $json.bp[\"bp.postCode\"],\n    street: $json.bp[\"bp.street\"]\n  },\n  identity: {\n    identityCase: $json.identityCase,\n    identityBand: $json.identityBand,\n    bestScore: $json.bestScore,\n    identityPolicy: $json.identityPolicy\n  },\n  candidates: $json.topCandidates\n}) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 400,
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        560,
+        352
+      ],
+      "id": "5d683500-ea35-4c79-b0f2-945a478bddb3",
+      "name": "07 AI → Resolve Identity",
+      "credentials": {
+        "openAiApi": {
+          "id": "3HBcRu4uU5H3gYao",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const bp = $json.bp || {};\nconst values = ($json.lookup && $json.lookup.values) ? $json.lookup.values : [];\n\nfunction getScore(c) {\n  const v = c?.matchingProfile?.matchingScores?.overall?.value;\n  const n = typeof v === \"string\" ? parseFloat(v) : Number(v);\n  return Number.isFinite(n) ? n : 0;\n}\n\nfunction norm(s) {\n  return String(s || \"\")\n    .toLowerCase()\n    .replace(/[^a-z0-9]+/g, \" \")\n    .trim();\n}\n\nfunction candName(c) {\n  return c?.businessPartner?.names?.[0]?.value || null;\n}\n\nfunction candCountry(c) {\n  return c?.businessPartner?.addresses?.[0]?.country?.shortName || null;\n}\n\nfunction candCity(c) {\n  return c?.businessPartner?.addresses?.[0]?.localities?.[0]?.value || null;\n}\n\nfunction candPostCode(c) {\n  return c?.businessPartner?.addresses?.[0]?.postCodes?.[0]?.value || null;\n}\n\nif (!values.length) {\n  return [{\n    json: {\n      bp,\n      identityBand: \"LOW\",\n      identityCase: \"NOT_FOUND\",\n      decision: { identity: \"NOT_FOUND\" },\n      topCandidates: [],\n      bestScore: 0,\n      resolvedCandidate: null\n    }\n  }];\n}\n\nconst topRaw = values\n  .slice()\n  .sort((a, b) => getScore(b) - getScore(a))\n  .slice(0, 3);\n\nconst topCandidates = topRaw.map(c => ({\n  cdqId: c.cdqId,\n  dataSource: c.dataSource || null,\n  dataSourceName: c.dataSourceName || c.dataSource?.name || null,\n  score: getScore(c),\n  name: candName(c),\n  country: candCountry(c),\n  city: candCity(c),\n  postCode: candPostCode(c)\n}));\n\nconst bestScore = topCandidates[0]?.score ?? 0;\nconst secondScore = topCandidates[1]?.score ?? 0;\nconst scoreGap = bestScore - secondScore;\n\nfunction signature(c) {\n  const name = norm(c.name);\n  const country = norm(c.country);\n  const city = c.city ? norm(c.city) : \"\";\n  const postCode = c.postCode ? norm(c.postCode) : \"\";\n  return [name, country, city, postCode].join(\"|\");\n}\n\nconst sigs = topCandidates.map(signature);\nconst uniqueSigs = Array.from(new Set(sigs));\n\nconst HIGH_THRESHOLD = 0.98;\nconst LOW_THRESHOLD = 0.80;\n\n// If best is strong and runner-up is weak (or far behind), treat as deterministic\nconst WINNER_MIN = 0.95;\nconst RUNNER_MAX = 0.80;\nconst GAP_CLEAR = 0.15;\n\nlet identityCase = \"SINGLE_CLEAR\";\nlet identityBand = \"HIGH\";\nlet resolvedCandidate = null;\n\nif (bestScore < LOW_THRESHOLD) {\n  identityCase = \"LOW_CONFIDENCE\";\n  identityBand = \"LOW\";\n} else if (topCandidates.length === 1) {\n  identityCase = \"SINGLE_CLEAR\";\n  identityBand = (bestScore >= HIGH_THRESHOLD) ? \"HIGH\" : \"MIDDLE\";\n  resolvedCandidate = topCandidates[0];\n} else if (uniqueSigs.length === 1) {\n  identityCase = \"MULTI_SOURCE_SAME_ENTITY\";\n  identityBand = \"HIGH\";\n  resolvedCandidate = topCandidates[0];\n} else {\n  const clearWinner =\n    (bestScore >= WINNER_MIN) &&\n    (secondScore < RUNNER_MAX || scoreGap >= GAP_CLEAR);\n\n  if (bestScore >= HIGH_THRESHOLD || clearWinner) {\n    identityCase = \"SINGLE_CLEAR\";\n    identityBand = \"HIGH\";\n    resolvedCandidate = topCandidates[0];\n  } else {\n    identityCase = \"AMBIGUOUS\";\n    identityBand = \"MIDDLE\";\n    resolvedCandidate = null;\n  }\n}\n\nreturn [{\n  json: {\n    bp,\n    identityBand,\n    identityCase,\n    decision: { identity: \"CANDIDATES\" },\n    topCandidates,\n    bestScore,\n    resolvedCandidate\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "29d4724b-cc3f-49d5-98aa-be750345e5db",
+      "name": "05 Policy → Prepare Candidates"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cdq.com/referencedata/rest/v3/businesspartners/lookup",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={\n  \"businessPartner\": {\n    \"names\": [\n      {\n        \"value\": \"{{$json.bp.name}}\"\n      }\n    ],\n    \"addresses\": [\n      {\n        \"country\": {\n          \"shortName\": \"{{$json.bp.country}}\"\n        },\n        \"localities\": [\n          {\n            \"value\": \"{{$json.bp.city}}\"\n          }\n        ],\n        \"postCodes\": [\n          {\n            \"value\": \"{{$json.bp.postCode}}\"\n          }\n        ],\n        \"thoroughfares\": [\n          {\n            \"value\": \"{{$json.bp.street}}\"\n          }\n        ]\n      }\n    ]\n  },\n  \"maxCandidates\": 20,\n  \"matchingThreshold\": 0.5\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "1e6a93af-7573-456f-89e2-afee41e4c321",
+      "name": "03 CDQ → Lookup",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bu7RkK7vuWdEB8QX",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6684f555-226b-4cef-b104-ccac5adb2b25",
+              "name": "=bp.name",
+              "value": "={{$json.body.companyName}}",
+              "type": "string"
+            },
+            {
+              "id": "2e2d5c0b-1171-4338-98fa-1f0a09e1aa1a",
+              "name": "bp.country",
+              "value": "={{$json.body.country}}",
+              "type": "string"
+            },
+            {
+              "id": "5a6bb82b-c992-48f2-bcaf-a884973dcaad",
+              "name": "bp.city",
+              "value": "={{$json.body.city}}",
+              "type": "string"
+            },
+            {
+              "id": "90858096-6aed-49e4-b615-c2c81f36aa3c",
+              "name": "bp.postCode",
+              "value": "={{$json.body.postCode}}",
+              "type": "string"
+            },
+            {
+              "id": "6ddeb193-8c6d-4fc0-9492-8af4cbb5e287",
+              "name": "bp.street",
+              "value": "={{$json.body.street}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "e5411dfa-19d3-40d4-bd53-45f4c8089415",
+      "name": "02 Policy → Normalize Input"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"decision\": \"REVIEW\",\n  \"reason\": \"IDENTITY_INSUFFICIENT_CONFIDENCE\",\n  \"message\": \"Unable to reliably identify the company. Please provide legal name + full address or VAT/registration ID.\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1344,
+        336
+      ],
+      "id": "21ffa00b-320f-4450-9460-315f4d99cfc8",
+      "name": "09 Respond → REVIEW (Identity Insufficient)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lookup = $json;              // lookup response\nconst original = $node[\"02 Policy → Normalize Input\"].json;   // original webhook input\n\nreturn [{\n  json: {\n    bp: original.bp,\n    lookup\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "65e8136a-c8b6-4a9d-9ef6-e512a9406796",
+      "name": "04 Policy → Merge Input + Lookup"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// Prefer the resolvedCandidate when present.\nconst resolved = item.resolvedCandidate || item.topCandidates?.[0] || null;\n\nif (!resolved) {\n  return [{\n    json: {\n      ...item,\n      selectedCandidate: null,\n      identity: {\n        method: \"DETERMINISTIC\",\n        band: item.identityBand,\n        case: item.identityCase || null\n      }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...item,\n    selectedCandidate: resolved,\n    identity: {\n      method: \"DETERMINISTIC\",\n      band: item.identityBand,\n      case: item.identityCase || null\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        592
+      ],
+      "id": "c20d080e-6864-4ae8-8145-704a467fe3c4",
+      "name": "07 Policy → Select Deterministic Candidate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// Parse the model output and apply acceptance rules.\nconst raw =\n  item.content ||\n  item.text ||\n  item.output ||\n  item.response ||\n  item?.data ||\n  item;\n\nlet parsed;\ntry {\n  parsed = typeof raw === \"string\" ? JSON.parse(raw) : raw;\n} catch (e) {\n  parsed = {\n    selectedCdqId: \"INSUFFICIENT_CONFIDENCE\",\n    confidence: \"LOW\",\n    reason: \"Model output not valid JSON\",\n    note: \"AMBIGUOUS\"\n  };\n}\n\nconst selectedCdqId = parsed.selectedCdqId;\nconst confidence = (parsed.confidence || \"LOW\").toUpperCase();\nconst candidates = item.topCandidates || [];\n\nconst foundCandidate = candidates.find(c => c.cdqId === selectedCdqId) || null;\n\n// Accept AI selection only when it is confident and references a provided candidate.\n// - selectedCdqId is not INSUFFICIENT_CONFIDENCE\n// - candidate exists in the provided set\n// - confidence is MEDIUM or HIGH\nconst proceed =\n  selectedCdqId &&\n  selectedCdqId !== \"INSUFFICIENT_CONFIDENCE\" &&\n  !!foundCandidate &&\n  (confidence === \"MEDIUM\" || confidence === \"HIGH\");\n\n// Otherwise set selectedCandidate to null so routing pauses.\nreturn [{\n  json: {\n    ...item,\n    ai: parsed,\n    selectedCandidate: proceed ? foundCandidate : null,\n    identity: {\n      method: \"AI_ASSISTED\",\n      band: item.identityBand,\n      case: item.identityCase || null,\n      aiConfidence: confidence\n    },\n    // optional: add a deterministic flag for clarity/audits\n    aiSelectionStatus: proceed ? \"ACCEPTED\" : \"REJECTED\"\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        352
+      ],
+      "id": "2610c00d-a4eb-4b53-8f93-377e9d918da7",
+      "name": "08 Policy → Apply AI Selection"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.selectedCandidate?.cdqId}}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "empty",
+                      "singleValue": true
+                    },
+                    "id": "19dbc79d-65a1-4f5a-820a-77071a973715"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "NO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c65636d5-1ff7-481f-812b-f617636e14a9",
+                    "leftValue": "={{$json.selectedCandidate?.cdqId}}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "OK"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1104,
+        352
+      ],
+      "id": "d34e6f7d-cc06-4169-8254-8c346bc6e4e1",
+      "name": "09 Policy → AI Sufficient?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst correlationId =\n  item.context?.correlationId ||\n  item.correlationId ||\n  $execution.id;\n\n// Build a minimal AML payload.\n// but keep it deterministic and minimal.\n\nconst cand = item.selectedCandidate || {};\nconst bpName = cand.name || item.companyName || null;\nconst country = cand.country || item.country || null;\n\nconst amlPayload = {\n  businessPartner: {\n    names: bpName ? [{ value: bpName }] : [],\n    addresses: country ? [{ country: { shortName: country } }] : [],\n    identifiers: cand.identifiers || []\n  },\n  caseContext: {\n    correlationId,\n    identityBand: item.identityBand || item.identity?.band || null,\n    identityCase: item.identityCase || item.identity?.case || null,\n    identityMethod: item.identity?.method || null\n  }\n};\n\nreturn [{\n  json: {\n    ...item,\n    aml: {\n      request: amlPayload\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        736
+      ],
+      "id": "573d0227-e638-47e8-905f-4b8729406bed",
+      "name": "10 Policy → Prepare AML Payload"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// Normalize the HTTP response container.\n// - the whole item itself, OR\n// - item.body, OR\n// - item.data\n// Adjust these fallbacks if needed after one run.\nconst resp = item.body || item.data || item;\n\nconst total = Number(resp.total ?? 0);\n\nlet route = \"PROCEED\";\nif (total > 0) route = \"REVIEW\"; // you can later introduce STOP thresholds when you have scores\n\n// Minimal AML summary for audit and routing.\nconst amlSummary = {\n  total,\n  route,\n  screeningDate: resp.auditTrail?.screeningDate || null,\n  screenedNames: (resp.auditTrail?.screenedNames || []).map(x => x?.value).filter(Boolean),\n  listsUsedCount: (resp.auditTrail?.screeningSettings?.listsUsedForCheck || []).length\n};\n\nreturn [{\n  json: {\n    ...item,\n    aml: {\n      response: resp,\n      summary: amlSummary\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        736
+      ],
+      "id": "336bb960-8761-4f6c-b395-00fee162b2c8",
+      "name": "12 Policy → Evaluate AML"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.aml.summary.route}}",
+                    "rightValue": "PROCEED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9032dce5-213e-455d-b217-e17e4b2189b8"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1d86f752-b46f-45d6-871a-4d0f00bee2ab",
+                    "leftValue": "={{$json.aml.summary.route}}",
+                    "rightValue": "REVIEW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        736
+      ],
+      "id": "c54597e7-a2a3-4c50-8641-e0730f69fe76",
+      "name": "13 Policy → Route by AML"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cdq.com/data-compliance/rest/v2/compliancelists/screen",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={\n    \"entry\": {\n      \"names\": [\n        {\n          \"value\": \"{{$json.bp.name}}\"\n        }\n      ],\n      \"addresses\": [\n        {\n          \"country\": {\n            \"shortName\": \"{{$json.bp.country}}\"\n          }\n        }\n      ]\n    }\n}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1152,
+        736
+      ],
+      "id": "fac7307d-d156-49a1-a107-13f639d22ca5",
+      "name": "11 CDQ → AML Screening",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bu7RkK7vuWdEB8QX",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nreturn [{\n  json: {\n    ...item,\n    finalDecision: \"REVIEW\",\n    reasons: [\"AML_POTENTIAL_MATCH\"]\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        720
+      ],
+      "id": "99d0bcd2-1e95-43e1-b63d-1b066a9da27b",
+      "name": "15 Policy → Final Decision (Review)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  decision: $json.finalDecision,\n  selectedCdqId: $json.resolvedCandidate?.cdqId || $json.selectedCandidate?.cdqId || null,\n  aml: $json.aml.summary,\n  reasons: $json.reasons\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2304,
+        720
+      ],
+      "id": "acf95b76-1e37-4b2d-9836-9ba0f65bef59",
+      "name": "16 Respond → REVIEW (AML Match)"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You generate short structured compliance review summaries.\n\nUse only the provided JSON.\nDo not invent facts.\n\nReturn JSON only with:\n{\n  \"summary\": \"...\",\n  \"whyRouted\": \"...\",\n  \"recommendedNextStep\": \"...\"\n}"
+            },
+            {
+              "content": "={{ JSON.stringify({\n  input: {\n    name: $json.bp?.[\"bp.name\"],\n    country: $json.bp?.[\"bp.country\"]\n  },\n  identity: {\n    identityBand: $json.identityBand,\n    identityCase: $json.identityCase\n  },\n  aml: $json.aml.summary\n}) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1776,
+        864
+      ],
+      "id": "6f0bf1af-8efa-4cc9-9393-95b05c49cb60",
+      "name": "14 AI → Review Card (AML)",
+      "credentials": {
+        "openAiApi": {
+          "id": "3HBcRu4uU5H3gYao",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  decision: $json.finalDecision,\n  selectedCdqId: $json.resolvedCandidate?.cdqId || $json.selectedCandidate?.cdqId || null,\n  aml: $json.aml.summary,\n  reasons: $json.reasons\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1824,
+        624
+      ],
+      "id": "7560f439-2ecd-4a03-9281-2be84433868d",
+      "name": "13 Respond → PROCEED (AML Clear)"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 Webhook → BP Onboarding": {
+      "main": [
+        [
+          {
+            "node": "02 Policy → Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 Policy → Route by Identity Band": {
+      "main": [
+        [
+          {
+            "node": "07 Respond → REQUEST_INFO (Low Identity)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "07 AI → Resolve Identity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "07 Policy → Select Deterministic Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 Policy → Prepare Candidates": {
+      "main": [
+        [
+          {
+            "node": "06 Policy → Route by Identity Band",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 CDQ → Lookup": {
+      "main": [
+        [
+          {
+            "node": "04 Policy → Merge Input + Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 Policy → Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "03 CDQ → Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 AI → Resolve Identity": {
+      "main": [
+        [
+          {
+            "node": "08 Policy → Apply AI Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 Policy → Merge Input + Lookup": {
+      "main": [
+        [
+          {
+            "node": "05 Policy → Prepare Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 Policy → Apply AI Selection": {
+      "main": [
+        [
+          {
+            "node": "09 Policy → AI Sufficient?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 Policy → AI Sufficient?": {
+      "main": [
+        [
+          {
+            "node": "09 Respond → REVIEW (Identity Insufficient)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "10 Policy → Prepare AML Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 Policy → Select Deterministic Candidate": {
+      "main": [
+        [
+          {
+            "node": "10 Policy → Prepare AML Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 Policy → Prepare AML Payload": {
+      "main": [
+        [
+          {
+            "node": "11 CDQ → AML Screening",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 Policy → Evaluate AML": {
+      "main": [
+        [
+          {
+            "node": "13 Policy → Route by AML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11 CDQ → AML Screening": {
+      "main": [
+        [
+          {
+            "node": "12 Policy → Evaluate AML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 Policy → Route by AML": {
+      "main": [
+        [
+          {
+            "node": "13 Respond → PROCEED (AML Clear)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "14 AI → Review Card (AML)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15 Policy → Final Decision (Review)": {
+      "main": [
+        [
+          {
+            "node": "16 Respond → REVIEW (AML Match)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 AI → Review Card (AML)": {
+      "main": [
+        [
+          {
+            "node": "15 Policy → Final Decision (Review)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "d79318a9-e0da-46a9-ab73-ba66c36aba92",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b5ec3d3d2064a63019ee8b80d5e4b1c86eaced353ffd68deac0d41c12fcb9343"
+  },
+  "id": "52RLxGGsjcUzIlQsTL4Cb",
+  "tags": []
+}
